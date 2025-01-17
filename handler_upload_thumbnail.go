@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -28,10 +30,61 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
 	// TODO: implement the upload here
+	// *parse file and put in r.FormFile or r.PostForm
+	const maxMemory = 10 << 20
+	errMultiForm := r.ParseMultipartForm(maxMemory)
+	if errMultiForm != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("handlerUploadThumbnail failed to parse thumbnail videoID %q", videoID), err)
+		return
+	}
 
-	respondWithJSON(w, http.StatusOK, struct{}{})
+	video, err := cfg.db.GetVideo(videoID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("handlerUploadThumbnail no video with videoID %q", videoID), err)
+			return
+		}
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("handlerUploadThumbnail failed to get videoID %q", videoID), err)
+		return
+	}
+
+	if video.UserID != userID {
+		respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("handlerUploadThumbnail videoID: %q not belong to userID: %q", videoID, userID), nil)
+		return
+	}
+
+	// *"thumbnail" should match the HTML form input name
+	// *get the file key "thumbnail" from r.FormFile
+	file, header, err := r.FormFile("thumbnail")
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("handlerUploadThumbnail Unable to parse form file videoID %q", videoID), err)
+		return
+	}
+
+	defer file.Close()
+	files, err := io.ReadAll(file)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("handlerUploadThumbnail Unable to read thumbnail videoID %q", videoID), err)
+		return
+	}
+
+	thumbnail := thumbnail{
+		data:      files,
+		mediaType: header.Header.Get("Content-Type"),
+	}
+	videoThumbnails[videoID] = thumbnail
+	thumbnailURL := fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, videoID)
+	video.ThumbnailURL = &thumbnailURL
+
+	errUpdateVideo := cfg.db.UpdateVideo(video)
+	if errUpdateVideo != nil {
+		delete(videoThumbnails, videoID)
+		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("handlerUploadThumbnail Unable to update thumbnail videoID %q", videoID), err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, video)
 }
