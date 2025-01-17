@@ -65,6 +65,11 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if ok, err := cfg.isSupportedMediaType(header.Header.Get("Content-Type")); !ok {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("handlerUploadThumbnail %s", err), err)
+		return
+	}
+
 	assetsPath := getAssetPath(videoID, header.Header.Get("Content-Type"))
 	diskFilePath := cfg.getAssetDiskPath(assetsPath)
 	dest, err := os.Create(diskFilePath)

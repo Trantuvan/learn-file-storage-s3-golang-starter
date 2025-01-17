@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"mime"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,12 +11,31 @@ import (
 	"github.com/google/uuid"
 )
 
+var supportedMediaType map[string]struct{} = map[string]struct{}{
+	"image/jpeg": {},
+	"image/png":  {},
+}
+
+const ErrNotSupportedMediaType = "not supported media typpe"
+
 func (cfg apiConfig) ensureAssetsDir() error {
 	if _, err := os.Stat(cfg.assetsRoot); os.IsNotExist(err) {
 		return os.Mkdir(cfg.assetsRoot, 0755)
 	}
 	return nil
 }
+
+func (cfg apiConfig) isSupportedMediaType(value string) (bool, error) {
+	mediaType, _, err := mime.ParseMediaType(value)
+	if err != nil {
+		return false, err
+	}
+	if _, ok := supportedMediaType[mediaType]; !ok {
+		return false, errors.New(ErrNotSupportedMediaType)
+	}
+	return true, nil
+}
+
 func getAssetPath(videoID uuid.UUID, mediaType string) string {
 	ext := mediaTypeToExt(mediaType)
 	return fmt.Sprintf("%s%s", videoID, ext)
