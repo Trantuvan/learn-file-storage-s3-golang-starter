@@ -70,7 +70,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	assetsPath := getAssetPath(videoID, header.Header.Get("Content-Type"))
+	assetsPath, err := getAssetPath(header.Header.Get("Content-Type"))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("handlerUploadThumbnail Unable to file name %s", err), err)
+		return
+	}
+
 	diskFilePath := cfg.getAssetDiskPath(assetsPath)
 	dest, err := os.Create(diskFilePath)
 	if err != nil {

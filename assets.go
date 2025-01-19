@@ -1,14 +1,14 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"mime"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/google/uuid"
 )
 
 var supportedMediaType map[string]struct{} = map[string]struct{}{
@@ -36,9 +36,16 @@ func (cfg apiConfig) isSupportedMediaType(value string) (bool, error) {
 	return true, nil
 }
 
-func getAssetPath(videoID uuid.UUID, mediaType string) string {
+func getAssetPath(mediaType string) (string, error) {
+	// *uuid.UUID - [16]byte convert to slice videoID[:]
+	randBytes := make([]byte, 32)
+	_, err := rand.Read(randBytes)
+	if err != nil {
+		return "", fmt.Errorf("getAssetPath Failed to read uuid to []byte %w", err)
+	}
+	fileName := base64.RawStdEncoding.EncodeToString(randBytes)
 	ext := mediaTypeToExt(mediaType)
-	return fmt.Sprintf("%s%s", videoID, ext)
+	return fmt.Sprintf("%s%s", fileName, ext), nil
 }
 
 func (cfg apiConfig) getAssetDiskPath(assetPath string) string {
