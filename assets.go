@@ -14,6 +14,7 @@ import (
 var supportedMediaType map[string]struct{} = map[string]struct{}{
 	"image/jpeg": {},
 	"image/png":  {},
+	"video/mp4":  {},
 }
 
 const ErrNotSupportedMediaType = "not supported media typpe"
@@ -43,7 +44,7 @@ func getAssetPath(mediaType string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("getAssetPath Failed to read uuid to []byte %w", err)
 	}
-	fileName := base64.RawStdEncoding.EncodeToString(randBytes)
+	fileName := base64.RawURLEncoding.EncodeToString(randBytes)
 	ext := mediaTypeToExt(mediaType)
 	return fmt.Sprintf("%s%s", fileName, ext), nil
 }
@@ -54,6 +55,10 @@ func (cfg apiConfig) getAssetDiskPath(assetPath string) string {
 
 func (cfg apiConfig) getAssetURL(assetPath string) string {
 	return fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, assetPath)
+}
+
+func (cfg apiConfig) getS3AssetURL(key string) string {
+	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, key)
 }
 
 func mediaTypeToExt(mediaType string) string {
