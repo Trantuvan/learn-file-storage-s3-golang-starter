@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -91,6 +92,20 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("handlerUploadVideo Unable to file name %s", err), err)
 		return
+	}
+
+	aspect, err := getVideoAspectRatio(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("handlerUploadVideo failed to get aspect ratio %s", err), err)
+		return
+	}
+
+	if aspect == sixteenByNine {
+		assetsPath = filepath.Join(landscape, assetsPath)
+	} else if aspect == nineBySixteen {
+		assetsPath = filepath.Join(portrait, assetsPath)
+	} else {
+		assetsPath = filepath.Join("other", assetsPath)
 	}
 
 	contentType := header.Header.Get("Content-Type")
