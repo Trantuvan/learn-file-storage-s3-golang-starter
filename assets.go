@@ -1,23 +1,46 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"mime"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
 
-var supportedMediaType map[string]struct{} = map[string]struct{}{
-	"image/jpeg": {},
-	"image/png":  {},
-	"video/mp4":  {},
-}
-
 const ErrNotSupportedMediaType = "not supported media typpe"
+
+var (
+	sixteenByNine = "16:9"
+	nineBySixteen = "9:16"
+	other         = "other"
+	landscape     = "landscape"
+	portrait      = "portrait"
+
+	supportedMediaType map[string]struct{} = map[string]struct{}{
+		"image/jpeg": {},
+		"image/png":  {},
+		"video/mp4":  {},
+	}
+
+	supportedAspectRatios map[string]aspectRatio = map[string]aspectRatio{
+		sixteenByNine: {width: 16, height: 9, tolerance: 0.1},
+		nineBySixteen: {width: 9, height: 16, tolerance: 0.1},
+	}
+)
+
+type aspectRatio struct {
+	width     float64
+	height    float64
+	tolerance float64
+}
 
 func (cfg apiConfig) ensureAssetsDir() error {
 	if _, err := os.Stat(cfg.assetsRoot); os.IsNotExist(err) {
@@ -59,6 +82,43 @@ func (cfg apiConfig) getAssetURL(assetPath string) string {
 
 func (cfg apiConfig) getS3AssetURL(key string) string {
 	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, key)
+}
+
+func getVideoAspectRatio(filePath string) (string, error) {
+	type videoInfo struct {
+		Stream []struct {
+			Index  int     `json:"index"`
+			Height float64 `json:"height"`
+			Width  float64 `json:"width"`
+		} `json:"streams"`
+	}
+
+	cmd := exec.Command("ffprobe", "-v", "error", "-print_format", "json", "-show_streams", filePath)
+	var output bytes.Buffer
+	cmd.Stdout = &output
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("getVideoAspectRatio: ffprobe %w", err)
+	}
+
+	var info videoInfo
+	if err := json.Unmarshal(output.Bytes(), &info); err != nil {
+		return "", fmt.Errorf("getVideoAspectRatio: failed to unmarshall video info %w", err)
+	}
+
+	if len(info.Stream) == 0 {
+		return "", errors.New("getVideoAspectRatio: no video streams found")
+	}
+
+	videoRatio := info.Stream[0].Width / info.Stream[0].Height
+	for k, v := range supportedAspectRatios {
+		expectedRatio := v.width / v.height
+
+		if math.Abs(videoRatio-expectedRatio) <= (expectedRatio * v.tolerance) {
+			return k, nil
+		}
+	}
+	return other, nil
 }
 
 func mediaTypeToExt(mediaType string) string {
