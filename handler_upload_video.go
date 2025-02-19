@@ -108,11 +108,25 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		assetsPath = filepath.Join("other", assetsPath)
 	}
 
+	fastPath, err := processVideoForFastStart(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("handlerUploadVideo failed faststart video %s", err), err)
+		return
+	}
+
+	processedFile, err := os.Open(fastPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("handlerUploadVideo failed create fast temp dir %s", err), err)
+		return
+	}
+	defer os.Remove(processedFile.Name())
+	defer processedFile.Close()
+
 	contentType := header.Header.Get("Content-Type")
 	_, errS3 := cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &assetsPath,
-		Body:        tempFile,
+		Body:        processedFile,
 		ContentType: &contentType,
 	})
 	if errS3 != nil {
